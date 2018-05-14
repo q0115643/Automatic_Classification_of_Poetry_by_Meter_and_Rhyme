@@ -1,4 +1,4 @@
-referrence: https://github.com/ZhixiuYe/NER-pytorch
+reference: https://github.com/ZhixiuYe/NER-pytorch
 
 <img src="image_ref/BiRNN_before_CRF.png">
 
