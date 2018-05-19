@@ -8,7 +8,7 @@ output: syllable txt file
 import re
 
 WB = '|'
-processed_data = open('processed_syllables.txt', 'w')
+processed_syllables = open('processed_syllables.txt', 'w')
 with open("syllables.txt") as syllable_txt, open("lines.txt") as lines_txt:
     for syllables, line in zip(syllable_txt, lines_txt):
 
@@ -56,7 +56,18 @@ with open("syllables.txt") as syllable_txt, open("lines.txt") as lines_txt:
 
         print("***after insertion of Word Boundary marker***")
         print("syllables: {0}\nline: {1}\n".format(syllables, line))
-        processed_data.write(syllables + '\n')
-processed_data.close()
+        processed_syllables.write(syllables + '\n')
+processed_syllables.close()
 syllable_txt.close()
 lines_txt.close()
+
+import csv
+
+processed_meters = open('processed_meters.txt', 'w')
+with open('4B4V.csv', newline='') as myFile:
+    reader = csv.reader(myFile)
+    for row in reader:
+        line = row[1]
+        processed_meters.write(line + '\n')
+processed_meters.close()
+myFile.close()
