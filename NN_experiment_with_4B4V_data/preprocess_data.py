@@ -71,6 +71,7 @@ lines_txt.close()
 get the meters set
 '''
 processed_meters = open('processed_meters.txt', 'w')
+lines_4B4V = open('lines_4B4V.txt', 'w')
 with open('4B4V.csv', newline='') as myFile:
     reader = csv.reader(myFile)
     for row in reader:
@@ -81,6 +82,10 @@ with open('4B4V.csv', newline='') as myFile:
         # for c in line:
         #     processed_meters.write(c + '\n')
         # processed_meters.write('\n')
+        line2 = row[0]
+        lines_4B4V.write(line2 + '\n')
+
 
 processed_meters.close()
 myFile.close()
+lines_4B4V.close()
