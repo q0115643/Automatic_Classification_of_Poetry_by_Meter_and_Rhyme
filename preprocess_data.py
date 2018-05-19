@@ -1,11 +1,10 @@
-'''
+# output: syllable txt file
+#         " " is the boundary of syllables,
+#         "|" is the boundary of words.
 
-output: syllable txt file
-        " " is the boundary of syllables,
-        "|" is the boundary of words.
 
-'''
 import re
+import csv
 
 WB = '|'
 processed_syllables = open('processed_syllables.txt', 'w')
@@ -61,8 +60,10 @@ processed_syllables.close()
 syllable_txt.close()
 lines_txt.close()
 
-import csv
 
+'''
+get the meters set
+'''
 processed_meters = open('processed_meters.txt', 'w')
 with open('4B4V.csv', newline='') as myFile:
     reader = csv.reader(myFile)
