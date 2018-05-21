@@ -3,7 +3,7 @@
 #########
 import re
 
-processed_lines = open('preprocessed_meters.txt', 'w')
+processed_lines = open('processed_meters.txt', 'w')
 
 cnt = 0
 with open("4B4V_lines.txt") as lines_large_txt, open("lines.txt") as lines_small_txt, open("4B4V_meters.txt") as meters_small_txt:
