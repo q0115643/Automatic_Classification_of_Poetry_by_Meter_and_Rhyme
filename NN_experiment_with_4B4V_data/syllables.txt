@@ -3,7 +3,7 @@
 (3, 1) CHRYST|yf.my|LOVE|wer*|IN|my|ARMES
 (4, 1) and|I|yn.my|BED|ag|AYNE
 (5, 1) WITH|how|SAD|steps*||o|MOONE||thou|CLIMBST|the|SKIES
-(6, 1) how|SIL|ent.and|WITH|how|WANNE|a|FACE
+(6, 1) how|SIL|ent|ly.and|WITH|how|WANNE|a|FACE
 (7, 1) WHAT||IT*|be.that|EV|en.in|HEA|vnly|PLACE
 (8, 1) that|BU|sie|AR|cher|HIS*|sharpe*|AR|rowes|TRIES
 (9, 1) SURE||if.that|LONG|with|LOVE|aced*|EYES

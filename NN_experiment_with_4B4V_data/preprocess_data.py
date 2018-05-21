@@ -14,7 +14,7 @@ with open("syllables.txt") as syllable_txt, open("lines.txt") as lines_txt:
         '''
         preprocess syllable.txt
         '''
-        syllables = re.sub('[.]', '', syllables)
+        syllables = re.sub('[.]', '|', syllables)
         syllables = re.sub('[^a-zA-Z\| ]+', ' ', syllables)
         syllables = re.sub('\([^)]+\)', '', syllables)
         syllables = re.sub("[\|]+", " ", syllables)

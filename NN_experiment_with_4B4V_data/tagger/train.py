@@ -75,7 +75,7 @@ optparser.add_option(
     type='int', help="Use a bidirectional LSTM for words"
 )
 optparser.add_option(
-    "-p", "--pre_emb", default="models/glove.6B.100d.txt",
+    "-p", "--pre_emb", default="",
     help="Location of pretrained embeddings"
 )
 optparser.add_option(
@@ -111,7 +111,7 @@ optparser.add_option(
     help='model name'
 )
 optparser.add_option(
-    '--char_mode', choices=['CNN', 'LSTM'], default='CNN',
+    '--char_mode', choices=['CNN', 'LSTM'], default='LSTM',
     help='char_CNN or char_LSTM'
 )
 opts = optparser.parse_args()[0]
