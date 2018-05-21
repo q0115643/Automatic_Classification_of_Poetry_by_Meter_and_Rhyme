@@ -1,397 +1,242 @@
-import os
-import re
-import numpy as np
-import scipy.io
-import theano
-import theano.tensor as T
-import codecs
-import cPickle
+import torch
+import torch.autograd as autograd
+from torch.autograd import Variable
+from utils import *
 
-from utils import shared, set_values, get_name
-from nn import HiddenLayer, EmbeddingLayer, DropoutLayer, LSTM, forward
-from optimization import Optimization
+START_TAG = '<START>'
+STOP_TAG = '<STOP>'
 
 
-class Model(object):
-    """
-    Network architecture.
-    """
-    def __init__(self, parameters=None, models_path=None, model_path=None):
-        """
-        Initialize the model. We either provide the parameters and a path where
-        we store the models, or the location of a trained model.
-        """
-        if model_path is None:
-            assert parameters and models_path
-            # Create a name based on the parameters
-            self.parameters = parameters
-            self.name = get_name(parameters)
-            # Model location
-            model_path = os.path.join(models_path, self.name)
-            self.model_path = model_path
-            self.parameters_path = os.path.join(model_path, 'parameters.pkl')
-            self.mappings_path = os.path.join(model_path, 'mappings.pkl')
-            # Create directory for the model if it does not exist
-            if not os.path.exists(self.model_path):
-                os.makedirs(self.model_path)
-            # Save the parameters to disk
-            with open(self.parameters_path, 'wb') as f:
-                cPickle.dump(parameters, f)
+def to_scalar(var):
+    return var.view(-1).data.tolist()[0]
+
+
+def argmax(vec):
+    _, idx = torch.max(vec, 1)
+    return to_scalar(idx)
+
+
+def prepare_sequence(seq, to_ix):
+    idxs = [to_ix[w] for w in seq]
+    tensor = torch.LongTensor(idxs)
+    return Variable(tensor)
+
+
+def log_sum_exp(vec):
+    # vec 2D: 1 * tagset_size
+    max_score = vec[0, argmax(vec)]
+    max_score_broadcast = max_score.view(1, -1).expand(1, vec.size()[1])
+    return max_score + \
+        torch.log(torch.sum(torch.exp(vec - max_score_broadcast)))
+
+
+class BiLSTM_CRF(nn.Module):
+
+    def __init__(self, vocab_size, tag_to_ix, embedding_dim, hidden_dim, char_lstm_dim=25,
+                 char_to_ix=None, pre_word_embeds=None, char_embedding_dim=25, use_gpu=False,
+                 n_cap=None, cap_embedding_dim=None, use_crf=True, char_mode='CNN'):
+        super(BiLSTM_CRF, self).__init__()
+        self.use_gpu = use_gpu
+        self.embedding_dim = embedding_dim
+        self.hidden_dim = hidden_dim
+        self.vocab_size = vocab_size
+        self.tag_to_ix = tag_to_ix
+        self.n_cap = n_cap
+        self.cap_embedding_dim = cap_embedding_dim
+        self.use_crf = use_crf
+        self.tagset_size = len(tag_to_ix)
+        self.out_channels = char_lstm_dim
+        self.char_mode = char_mode
+
+        print('char_mode: %s, out_channels: %d, hidden_dim: %d, ' % (char_mode, char_lstm_dim, hidden_dim))
+
+        if self.n_cap and self.cap_embedding_dim:
+            self.cap_embeds = nn.Embedding(self.n_cap, self.cap_embedding_dim)
+            init_embedding(self.cap_embeds.weight)
+
+        if char_embedding_dim is not None:
+            self.char_lstm_dim = char_lstm_dim
+            self.char_embeds = nn.Embedding(len(char_to_ix), char_embedding_dim)
+            init_embedding(self.char_embeds.weight)
+            if self.char_mode == 'LSTM':
+                self.char_lstm = nn.LSTM(char_embedding_dim, char_lstm_dim, num_layers=1, bidirectional=True)
+                init_lstm(self.char_lstm)
+            if self.char_mode == 'CNN':
+                self.char_cnn3 = nn.Conv2d(in_channels=1, out_channels=self.out_channels, kernel_size=(3, char_embedding_dim), padding=(2,0))
+
+        self.word_embeds = nn.Embedding(vocab_size, embedding_dim)
+        if pre_word_embeds is not None:
+            self.pre_word_embeds = True
+            self.word_embeds.weight = nn.Parameter(torch.FloatTensor(pre_word_embeds))
         else:
-            assert parameters is None and models_path is None
-            # Model location
-            self.model_path = model_path
-            self.parameters_path = os.path.join(model_path, 'parameters.pkl')
-            self.mappings_path = os.path.join(model_path, 'mappings.pkl')
-            # Load the parameters and the mappings from disk
-            with open(self.parameters_path, 'rb') as f:
-                self.parameters = cPickle.load(f)
-            self.reload_mappings()
-        self.components = {}
+            self.pre_word_embeds = False
 
-    def save_mappings(self, id_to_word, id_to_char, id_to_tag):
-        """
-        We need to save the mappings if we want to use the model later.
-        """
-        self.id_to_word = id_to_word
-        self.id_to_char = id_to_char
-        self.id_to_tag = id_to_tag
-        with open(self.mappings_path, 'wb') as f:
-            mappings = {
-                'id_to_word': self.id_to_word,
-                'id_to_char': self.id_to_char,
-                'id_to_tag': self.id_to_tag,
-            }
-            cPickle.dump(mappings, f)
-
-    def reload_mappings(self):
-        """
-        Load mappings from disk.
-        """
-        with open(self.mappings_path, 'rb') as f:
-            mappings = cPickle.load(f)
-        self.id_to_word = mappings['id_to_word']
-        self.id_to_char = mappings['id_to_char']
-        self.id_to_tag = mappings['id_to_tag']
-
-    def add_component(self, param):
-        """
-        Add a new parameter to the network.
-        """
-        if param.name in self.components:
-            raise Exception('The network already has a parameter "%s"!'
-                            % param.name)
-        self.components[param.name] = param
-
-    def save(self):
-        """
-        Write components values to disk.
-        """
-        for name, param in self.components.items():
-            param_path = os.path.join(self.model_path, "%s.mat" % name)
-            if hasattr(param, 'params'):
-                param_values = {p.name: p.get_value() for p in param.params}
-            else:
-                param_values = {name: param.get_value()}
-            scipy.io.savemat(param_path, param_values)
-
-    def reload(self):
-        """
-        Load components values from disk.
-        """
-        for name, param in self.components.items():
-            param_path = os.path.join(self.model_path, "%s.mat" % name)
-            param_values = scipy.io.loadmat(param_path)
-            if hasattr(param, 'params'):
-                for p in param.params:
-                    set_values(p.name, p, param_values[p.name])
-            else:
-                set_values(name, param, param_values[name])
-
-    def build(self,
-              dropout,
-              char_dim,
-              char_lstm_dim,
-              char_bidirect,
-              word_dim,
-              word_lstm_dim,
-              word_bidirect,
-              lr_method,
-              pre_emb,
-              crf,
-              cap_dim,
-              training=True,
-              **kwargs
-              ):
-        """
-        Build the network.
-        """
-        # Training parameters
-        n_words = len(self.id_to_word)
-        n_chars = len(self.id_to_char)
-        n_tags = len(self.id_to_tag)
-
-        # Number of capitalization features
-        if cap_dim:
-            n_cap = 4
-
-        # Network variables
-        is_train = T.iscalar('is_train')
-        word_ids = T.ivector(name='word_ids')
-        char_for_ids = T.imatrix(name='char_for_ids')
-        char_rev_ids = T.imatrix(name='char_rev_ids')
-        char_pos_ids = T.ivector(name='char_pos_ids')
-        tag_ids = T.ivector(name='tag_ids')
-        if cap_dim:
-            cap_ids = T.ivector(name='cap_ids')
-
-        # Sentence length
-        s_len = (word_ids if word_dim else char_pos_ids).shape[0]
-
-        # Final input (all word features)
-        input_dim = 0
-        inputs = []
-
-        #
-        # Word inputs
-        #
-        if word_dim:
-            input_dim += word_dim
-            word_layer = EmbeddingLayer(n_words, word_dim, name='word_layer')
-            word_input = word_layer.link(word_ids)
-            inputs.append(word_input)
-            # Initialize with pretrained embeddings
-            if pre_emb and training:
-                new_weights = word_layer.embeddings.get_value()
-                print 'Loading pretrained embeddings from %s...' % pre_emb
-                pretrained = {}
-                emb_invalid = 0
-                for i, line in enumerate(codecs.open(pre_emb, 'r', 'utf-8')):
-                    line = line.rstrip().split()
-                    if len(line) == word_dim + 1:
-                        pretrained[line[0]] = np.array(
-                            [float(x) for x in line[1:]]
-                        ).astype(np.float32)
-                    else:
-                        emb_invalid += 1
-                if emb_invalid > 0:
-                    print 'WARNING: %i invalid lines' % emb_invalid
-                c_found = 0
-                c_lower = 0
-                c_zeros = 0
-                # Lookup table initialization
-                for i in xrange(n_words):
-                    word = self.id_to_word[i]
-                    if word in pretrained:
-                        new_weights[i] = pretrained[word]
-                        c_found += 1
-                    elif word.lower() in pretrained:
-                        new_weights[i] = pretrained[word.lower()]
-                        c_lower += 1
-                    elif re.sub('\d', '0', word.lower()) in pretrained:
-                        new_weights[i] = pretrained[
-                            re.sub('\d', '0', word.lower())
-                        ]
-                        c_zeros += 1
-                word_layer.embeddings.set_value(new_weights)
-                print 'Loaded %i pretrained embeddings.' % len(pretrained)
-                print ('%i / %i (%.4f%%) words have been initialized with '
-                       'pretrained embeddings.') % (
-                            c_found + c_lower + c_zeros, n_words,
-                            100. * (c_found + c_lower + c_zeros) / n_words
-                      )
-                print ('%i found directly, %i after lowercasing, '
-                       '%i after lowercasing + zero.') % (
-                          c_found, c_lower, c_zeros
-                      )
-
-        #
-        # Chars inputs
-        #
-        if char_dim:
-            input_dim += char_lstm_dim
-            char_layer = EmbeddingLayer(n_chars, char_dim, name='char_layer')
-
-            char_lstm_for = LSTM(char_dim, char_lstm_dim, with_batch=True,
-                                 name='char_lstm_for')
-            char_lstm_rev = LSTM(char_dim, char_lstm_dim, with_batch=True,
-                                 name='char_lstm_rev')
-
-            char_lstm_for.link(char_layer.link(char_for_ids))
-            char_lstm_rev.link(char_layer.link(char_rev_ids))
-
-            char_for_output = char_lstm_for.h.dimshuffle((1, 0, 2))[
-                T.arange(s_len), char_pos_ids
-            ]
-            char_rev_output = char_lstm_rev.h.dimshuffle((1, 0, 2))[
-                T.arange(s_len), char_pos_ids
-            ]
-
-            inputs.append(char_for_output)
-            if char_bidirect:
-                inputs.append(char_rev_output)
-                input_dim += char_lstm_dim
-
-        #
-        # Capitalization feature
-        #
-        if cap_dim:
-            input_dim += cap_dim
-            cap_layer = EmbeddingLayer(n_cap, cap_dim, name='cap_layer')
-            inputs.append(cap_layer.link(cap_ids))
-
-        # Prepare final input
-        inputs = T.concatenate(inputs, axis=1) if len(inputs) != 1 else inputs[0]
-
-        #
-        # Dropout on final input
-        #
-        if dropout:
-            dropout_layer = DropoutLayer(p=dropout)
-            input_train = dropout_layer.link(inputs)
-            input_test = (1 - dropout) * inputs
-            inputs = T.switch(T.neq(is_train, 0), input_train, input_test)
-
-        # LSTM for words
-        word_lstm_for = LSTM(input_dim, word_lstm_dim, with_batch=False,
-                             name='word_lstm_for')
-        word_lstm_rev = LSTM(input_dim, word_lstm_dim, with_batch=False,
-                             name='word_lstm_rev')
-        word_lstm_for.link(inputs)
-        word_lstm_rev.link(inputs[::-1, :])
-        word_for_output = word_lstm_for.h
-        word_rev_output = word_lstm_rev.h[::-1, :]
-        if word_bidirect:
-            final_output = T.concatenate(
-                [word_for_output, word_rev_output],
-                axis=1
-            )
-            tanh_layer = HiddenLayer(2 * word_lstm_dim, word_lstm_dim,
-                                     name='tanh_layer', activation='tanh')
-            final_output = tanh_layer.link(final_output)
+        self.dropout = nn.Dropout(0.5)
+        if self.n_cap and self.cap_embedding_dim:
+            if self.char_mode == 'LSTM':
+                self.lstm = nn.LSTM(embedding_dim+char_lstm_dim*2+cap_embedding_dim, hidden_dim, bidirectional=True)
+            if self.char_mode == 'CNN':
+                self.lstm = nn.LSTM(embedding_dim+self.out_channels+cap_embedding_dim, hidden_dim, bidirectional=True)
         else:
-            final_output = word_for_output
+            if self.char_mode == 'LSTM':
+                self.lstm = nn.LSTM(embedding_dim+char_lstm_dim*2, hidden_dim, bidirectional=True)
+            if self.char_mode == 'CNN':
+                self.lstm = nn.LSTM(embedding_dim+self.out_channels, hidden_dim, bidirectional=True)
+        init_lstm(self.lstm)
+        self.hw_trans = nn.Linear(self.out_channels, self.out_channels)
+        self.hw_gate = nn.Linear(self.out_channels, self.out_channels)
+        self.h2_h1 = nn.Linear(hidden_dim*2, hidden_dim)
+        self.tanh = nn.Tanh()
+        self.hidden2tag = nn.Linear(hidden_dim*2, self.tagset_size)
+        init_linear(self.h2_h1)
+        init_linear(self.hidden2tag)
+        init_linear(self.hw_gate)
+        init_linear(self.hw_trans)
 
-        # Sentence to Named Entity tags - Score
-        final_layer = HiddenLayer(word_lstm_dim, n_tags, name='final_layer',
-                                  activation=(None if crf else 'softmax'))
-        tags_scores = final_layer.link(final_output)
+        if self.use_crf:
+            self.transitions = nn.Parameter(
+                torch.zeros(self.tagset_size, self.tagset_size))
+            self.transitions.data[tag_to_ix[START_TAG], :] = -10000
+            self.transitions.data[:, tag_to_ix[STOP_TAG]] = -10000
 
-        # No CRF
-        if not crf:
-            cost = T.nnet.categorical_crossentropy(tags_scores, tag_ids).mean()
-        # CRF
+    def _score_sentence(self, feats, tags):
+        # tags is ground_truth, a list of ints, length is len(sentence)
+        # feats is a 2D tensor, len(sentence) * tagset_size
+        r = torch.LongTensor(range(feats.size()[0]))
+        if self.use_gpu:
+            r = r.cuda()
+            pad_start_tags = torch.cat([torch.cuda.LongTensor([self.tag_to_ix[START_TAG]]), tags])
+            pad_stop_tags = torch.cat([tags, torch.cuda.LongTensor([self.tag_to_ix[STOP_TAG]])])
         else:
-            transitions = shared((n_tags + 2, n_tags + 2), 'transitions')
+            pad_start_tags = torch.cat([torch.LongTensor([self.tag_to_ix[START_TAG]]), tags])
+            pad_stop_tags = torch.cat([tags, torch.LongTensor([self.tag_to_ix[STOP_TAG]])])
 
-            small = -1000
-            b_s = np.array([[small] * n_tags + [0, small]]).astype(np.float32)
-            e_s = np.array([[small] * n_tags + [small, 0]]).astype(np.float32)
-            observations = T.concatenate(
-                [tags_scores, small * T.ones((s_len, 2))],
-                axis=1
-            )
-            observations = T.concatenate(
-                [b_s, observations, e_s],
-                axis=0
-            )
+        score = torch.sum(self.transitions[pad_stop_tags, pad_start_tags]) + torch.sum(feats[r, tags])
 
-            # Score from tags
-            real_path_score = tags_scores[T.arange(s_len), tag_ids].sum()
+        return score
 
-            # Score from transitions
-            b_id = theano.shared(value=np.array([n_tags], dtype=np.int32))
-            e_id = theano.shared(value=np.array([n_tags + 1], dtype=np.int32))
-            padded_tags_ids = T.concatenate([b_id, tag_ids, e_id], axis=0)
-            real_path_score += transitions[
-                padded_tags_ids[T.arange(s_len + 1)],
-                padded_tags_ids[T.arange(s_len + 1) + 1]
-            ].sum()
+    def _get_lstm_features(self, sentence, chars2, caps, chars2_length, d):
 
-            all_paths_scores = forward(observations, transitions)
-            cost = - (real_path_score - all_paths_scores)
+        if self.char_mode == 'LSTM':
+            # self.char_lstm_hidden = self.init_lstm_hidden(dim=self.char_lstm_dim, bidirection=True, batchsize=chars2.size(0))
+            chars_embeds = self.char_embeds(chars2).transpose(0, 1)
+            packed = torch.nn.utils.rnn.pack_padded_sequence(chars_embeds, chars2_length)
+            lstm_out, _ = self.char_lstm(packed)
+            outputs, output_lengths = torch.nn.utils.rnn.pad_packed_sequence(lstm_out)
+            outputs = outputs.transpose(0, 1)
+            chars_embeds_temp = Variable(torch.FloatTensor(torch.zeros((outputs.size(0), outputs.size(2)))))
+            if self.use_gpu:
+                chars_embeds_temp = chars_embeds_temp.cuda()
+            for i, index in enumerate(output_lengths):
+                chars_embeds_temp[i] = torch.cat((outputs[i, index-1, :self.char_lstm_dim], outputs[i, 0, self.char_lstm_dim:]))
+            chars_embeds = chars_embeds_temp.clone()
+            for i in range(chars_embeds.size(0)):
+                chars_embeds[d[i]] = chars_embeds_temp[i]
 
-        # Network parameters
-        params = []
-        if word_dim:
-            self.add_component(word_layer)
-            params.extend(word_layer.params)
-        if char_dim:
-            self.add_component(char_layer)
-            self.add_component(char_lstm_for)
-            params.extend(char_layer.params)
-            params.extend(char_lstm_for.params)
-            if char_bidirect:
-                self.add_component(char_lstm_rev)
-                params.extend(char_lstm_rev.params)
-        self.add_component(word_lstm_for)
-        params.extend(word_lstm_for.params)
-        if word_bidirect:
-            self.add_component(word_lstm_rev)
-            params.extend(word_lstm_rev.params)
-        if cap_dim:
-            self.add_component(cap_layer)
-            params.extend(cap_layer.params)
-        self.add_component(final_layer)
-        params.extend(final_layer.params)
-        if crf:
-            self.add_component(transitions)
-            params.append(transitions)
-        if word_bidirect:
-            self.add_component(tanh_layer)
-            params.extend(tanh_layer.params)
+        if self.char_mode == 'CNN':
+            chars_embeds = self.char_embeds(chars2).unsqueeze(1)
+            chars_cnn_out3 = self.char_cnn3(chars_embeds)
+            chars_embeds = nn.functional.max_pool2d(chars_cnn_out3,
+                                                 kernel_size=(chars_cnn_out3.size(2), 1)).view(chars_cnn_out3.size(0), self.out_channels)
 
-        # Prepare train and eval inputs
-        eval_inputs = []
-        if word_dim:
-            eval_inputs.append(word_ids)
-        if char_dim:
-            eval_inputs.append(char_for_ids)
-            if char_bidirect:
-                eval_inputs.append(char_rev_ids)
-            eval_inputs.append(char_pos_ids)
-        if cap_dim:
-            eval_inputs.append(cap_ids)
-        train_inputs = eval_inputs + [tag_ids]
+        # t = self.hw_gate(chars_embeds)
+        # g = nn.functional.sigmoid(t)
+        # h = nn.functional.relu(self.hw_trans(chars_embeds))
+        # chars_embeds = g * h + (1 - g) * chars_embeds
 
-        # Parse optimization method parameters
-        if "-" in lr_method:
-            lr_method_name = lr_method[:lr_method.find('-')]
-            lr_method_parameters = {}
-            for x in lr_method[lr_method.find('-') + 1:].split('-'):
-                split = x.split('_')
-                assert len(split) == 2
-                lr_method_parameters[split[0]] = float(split[1])
+        embeds = self.word_embeds(sentence)
+        if self.n_cap and self.cap_embedding_dim:
+            cap_embedding = self.cap_embeds(caps)
+
+        if self.n_cap and self.cap_embedding_dim:
+            embeds = torch.cat((embeds, chars_embeds, cap_embedding), 1)
         else:
-            lr_method_name = lr_method
-            lr_method_parameters = {}
+            embeds = torch.cat((embeds, chars_embeds), 1)
 
-        # Compile training function
-        print 'Compiling...'
-        if training:
-            updates = Optimization(clip=5.0).get_updates(lr_method_name, cost, params, **lr_method_parameters)
-            f_train = theano.function(
-                inputs=train_inputs,
-                outputs=cost,
-                updates=updates,
-                givens=({is_train: np.cast['int32'](1)} if dropout else {})
-            )
+        embeds = embeds.unsqueeze(1)
+        embeds = self.dropout(embeds)
+        lstm_out, _ = self.lstm(embeds)
+        lstm_out = lstm_out.view(len(sentence), self.hidden_dim*2)
+        lstm_out = self.dropout(lstm_out)
+        lstm_feats = self.hidden2tag(lstm_out)
+        return lstm_feats
+
+    def _forward_alg(self, feats):
+        # calculate in log domain
+        # feats is len(sentence) * tagset_size
+        # initialize alpha with a Tensor with values all equal to -10000.
+        init_alphas = torch.Tensor(1, self.tagset_size).fill_(-10000.)
+        init_alphas[0][self.tag_to_ix[START_TAG]] = 0.
+        forward_var = autograd.Variable(init_alphas)
+        if self.use_gpu:
+            forward_var = forward_var.cuda()
+        for feat in feats:
+            emit_score = feat.view(-1, 1)
+            tag_var = forward_var + self.transitions + emit_score
+            max_tag_var, _ = torch.max(tag_var, dim=1)
+            tag_var = tag_var - max_tag_var.view(-1, 1)
+            forward_var = max_tag_var + torch.log(torch.sum(torch.exp(tag_var), dim=1)).view(1, -1) # ).view(1, -1)
+        terminal_var = (forward_var + self.transitions[self.tag_to_ix[STOP_TAG]]).view(1, -1)
+        alpha = log_sum_exp(terminal_var)
+        # Z(x)
+        return alpha
+
+    def viterbi_decode(self, feats):
+        backpointers = []
+        # analogous to forward
+        init_vvars = torch.Tensor(1, self.tagset_size).fill_(-10000.)
+        init_vvars[0][self.tag_to_ix[START_TAG]] = 0
+        forward_var = Variable(init_vvars)
+        if self.use_gpu:
+            forward_var = forward_var.cuda()
+        for feat in feats:
+            next_tag_var = forward_var.view(1, -1).expand(self.tagset_size, self.tagset_size) + self.transitions
+            _, bptrs_t = torch.max(next_tag_var, dim=1)
+            bptrs_t = bptrs_t.squeeze().data.cpu().numpy()
+            next_tag_var = next_tag_var.data.cpu().numpy()
+            viterbivars_t = next_tag_var[range(len(bptrs_t)), bptrs_t]
+            viterbivars_t = Variable(torch.FloatTensor(viterbivars_t))
+            if self.use_gpu:
+                viterbivars_t = viterbivars_t.cuda()
+            forward_var = viterbivars_t + feat
+            backpointers.append(bptrs_t)
+
+        terminal_var = forward_var + self.transitions[self.tag_to_ix[STOP_TAG]]
+        terminal_var.data[self.tag_to_ix[STOP_TAG]] = -10000.
+        terminal_var.data[self.tag_to_ix[START_TAG]] = -10000.
+        best_tag_id = argmax(terminal_var.unsqueeze(0))
+        path_score = terminal_var[best_tag_id]
+        best_path = [best_tag_id]
+        for bptrs_t in reversed(backpointers):
+            best_tag_id = bptrs_t[best_tag_id]
+            best_path.append(best_tag_id)
+        start = best_path.pop()
+        assert start == self.tag_to_ix[START_TAG]
+        best_path.reverse()
+        return path_score, best_path
+
+    def neg_log_likelihood(self, sentence, tags, chars2, caps, chars2_length, d):
+        # sentence, tags is a list of ints
+        # features is a 2D tensor, len(sentence) * self.tagset_size
+        feats = self._get_lstm_features(sentence, chars2, caps, chars2_length, d)
+
+        if self.use_crf:
+            forward_score = self._forward_alg(feats)
+            gold_score = self._score_sentence(feats, tags)
+            return forward_score - gold_score
         else:
-            f_train = None
+            tags = Variable(tags)
+            scores = nn.functional.cross_entropy(feats, tags)
+            return scores
 
-        # Compile evaluation function
-        if not crf:
-            f_eval = theano.function(
-                inputs=eval_inputs,
-                outputs=tags_scores,
-                givens=({is_train: np.cast['int32'](0)} if dropout else {})
-            )
+
+    def forward(self, sentence, chars, caps, chars2_length, d):
+        feats = self._get_lstm_features(sentence, chars, caps, chars2_length, d)
+        # viterbi to get tag_seq
+        if self.use_crf:
+            score, tag_seq = self.viterbi_decode(feats)
         else:
-            f_eval = theano.function(
-                inputs=eval_inputs,
-                outputs=forward(observations, transitions, viterbi=True,
-                                return_alpha=False, return_best_sequence=True),
-                givens=({is_train: np.cast['int32'](0)} if dropout else {})
-            )
+            score, tag_seq = torch.max(feats, 1)
+            tag_seq = list(tag_seq.cpu().data)
 
-        return f_train, f_eval
+        return score, tag_seq

@@ -1,8 +1,7 @@
+from __future__ import print_function
 import os
 import re
-import codecs
 import numpy as np
-import theano
 
 
 models_path = "./models"
@@ -39,18 +38,6 @@ def set_values(name, param, pretrained):
     param.set_value(np.reshape(
         pretrained, param_value.shape
     ).astype(np.float32))
-
-
-def shared(shape, name):
-    """
-    Create a shared object of a numpy array.
-    """
-    if len(shape) == 1:
-        value = np.zeros(shape)  # bias are initialized with zeros
-    else:
-        drange = np.sqrt(6. / (np.sum(shape)))
-        value = drange * np.random.uniform(low=-1.0, high=1.0, size=shape)
-    return theano.shared(value=value.astype(theano.config.floatX), name=name)
 
 
 def create_dico(item_list):
@@ -154,27 +141,6 @@ def iobes_iob(tags):
     return new_tags
 
 
-def iob_ranges(tags):
-    """
-    IOB -> Ranges
-    """
-    ranges = []
-    def check_if_closing_range():
-        if i == len(tags)-1 or tags[i+1].split('-')[0] == 'O':
-            ranges.append((begin, i, type))
-    
-    for i, tag in enumerate(tags):
-        if tag.split('-')[0] == 'O':
-            pass
-        elif tag.split('-')[0] == 'B':
-            begin = i
-            type = tag.split('-')[1]
-            check_if_closing_range()
-        elif tag.split('-')[0] == 'I':
-            check_if_closing_range()
-    return ranges
-
-
 def insert_singletons(words, singletons, p=0.5):
     """
     Replace singletons by the unknown word with a probability p.
@@ -236,68 +202,68 @@ def create_input(data, parameters, add_label, singletons=None):
         input.append(data['tags'])
     return input
 
+import torch.nn as nn
+from torch.nn import init
 
-def evaluate(parameters, f_eval, raw_sentences, parsed_sentences,
-             id_to_tag, dictionary_tags):
+def init_embedding(input_embedding):
     """
-    Evaluate current model using CoNLL script.
+    Initialize embedding
     """
-    n_tags = len(id_to_tag)
-    predictions = []
-    count = np.zeros((n_tags, n_tags), dtype=np.int32)
+    bias = np.sqrt(3.0 / input_embedding.size(1))
+    nn.init.uniform(input_embedding, -bias, bias)
 
-    for raw_sentence, data in zip(raw_sentences, parsed_sentences):
-        input = create_input(data, parameters, False)
-        if parameters['crf']:
-            y_preds = np.array(f_eval(*input))[1:-1]
-        else:
-            y_preds = f_eval(*input).argmax(axis=1)
-        y_reals = np.array(data['tags']).astype(np.int32)
-        assert len(y_preds) == len(y_reals)
-        p_tags = [id_to_tag[y_pred] for y_pred in y_preds]
-        r_tags = [id_to_tag[y_real] for y_real in y_reals]
-        if parameters['tag_scheme'] == 'iobes':
-            p_tags = iobes_iob(p_tags)
-            r_tags = iobes_iob(r_tags)
-        for i, (y_pred, y_real) in enumerate(zip(y_preds, y_reals)):
-            new_line = " ".join(raw_sentence[i][:-1] + [r_tags[i], p_tags[i]])
-            predictions.append(new_line)
-            count[y_real, y_pred] += 1
-        predictions.append("")
+def init_linear(input_linear):
+    """
+    Initialize linear transformation
+    """
+    bias = np.sqrt(6.0 / (input_linear.weight.size(0) + input_linear.weight.size(1)))
+    nn.init.uniform(input_linear.weight, -bias, bias)
+    if input_linear.bias is not None:
+        input_linear.bias.data.zero_()
 
-    # Write predictions to disk and run CoNLL script externally
-    eval_id = np.random.randint(1000000, 2000000)
-    output_path = os.path.join(eval_temp, "eval.%i.output" % eval_id)
-    scores_path = os.path.join(eval_temp, "eval.%i.scores" % eval_id)
-    with codecs.open(output_path, 'w', 'utf8') as f:
-        f.write("\n".join(predictions))
-    os.system("%s < %s > %s" % (eval_script, output_path, scores_path))
+def adjust_learning_rate(optimizer, lr):
+    """
+    shrink learning rate for pytorch
+    """
+    for param_group in optimizer.param_groups:
+        param_group['lr'] = lr
 
-    # CoNLL evaluation results
-    eval_lines = [l.rstrip() for l in codecs.open(scores_path, 'r', 'utf8')]
-    for line in eval_lines:
-        print line
 
-    # Remove temp files
-    # os.remove(output_path)
-    # os.remove(scores_path)
+def init_lstm(input_lstm):
+    """
+    Initialize lstm
+    """
+    for ind in range(0, input_lstm.num_layers):
+        weight = eval('input_lstm.weight_ih_l' + str(ind))
+        bias = np.sqrt(6.0 / (weight.size(0) / 4 + weight.size(1)))
+        nn.init.uniform(weight, -bias, bias)
+        weight = eval('input_lstm.weight_hh_l' + str(ind))
+        bias = np.sqrt(6.0 / (weight.size(0) / 4 + weight.size(1)))
+        nn.init.uniform(weight, -bias, bias)
+    if input_lstm.bidirectional:
+        for ind in range(0, input_lstm.num_layers):
+            weight = eval('input_lstm.weight_ih_l' + str(ind) + '_reverse')
+            bias = np.sqrt(6.0 / (weight.size(0) / 4 + weight.size(1)))
+            nn.init.uniform(weight, -bias, bias)
+            weight = eval('input_lstm.weight_hh_l' + str(ind) + '_reverse')
+            bias = np.sqrt(6.0 / (weight.size(0) / 4 + weight.size(1)))
+            nn.init.uniform(weight, -bias, bias)
 
-    # Confusion matrix with accuracy for each tag
-    print ("{: >2}{: >7}{: >7}%s{: >9}" % ("{: >7}" * n_tags)).format(
-        "ID", "NE", "Total",
-        *([id_to_tag[i] for i in xrange(n_tags)] + ["Percent"])
-    )
-    for i in xrange(n_tags):
-        print ("{: >2}{: >7}{: >7}%s{: >9}" % ("{: >7}" * n_tags)).format(
-            str(i), id_to_tag[i], str(count[i].sum()),
-            *([count[i][j] for j in xrange(n_tags)] +
-              ["%.3f" % (count[i][i] * 100. / max(1, count[i].sum()))])
-        )
+    if input_lstm.bias:
+        for ind in range(0, input_lstm.num_layers):
+            weight = eval('input_lstm.bias_ih_l' + str(ind))
+            weight.data.zero_()
+            weight.data[input_lstm.hidden_size: 2 * input_lstm.hidden_size] = 1
+            weight = eval('input_lstm.bias_hh_l' + str(ind))
+            weight.data.zero_()
+            weight.data[input_lstm.hidden_size: 2 * input_lstm.hidden_size] = 1
+        if input_lstm.bidirectional:
+            for ind in range(0, input_lstm.num_layers):
+                weight = eval('input_lstm.bias_ih_l' + str(ind) + '_reverse')
+                weight.data.zero_()
+                weight.data[input_lstm.hidden_size: 2 * input_lstm.hidden_size] = 1
+                weight = eval('input_lstm.bias_hh_l' + str(ind) + '_reverse')
+                weight.data.zero_()
+                weight.data[input_lstm.hidden_size: 2 * input_lstm.hidden_size] = 1
 
-    # Global accuracy
-    print "%i/%i (%.5f%%)" % (
-        count.trace(), count.sum(), 100. * count.trace() / max(1, count.sum())
-    )
 
-    # F1 on all entities
-    return float(eval_lines[1].strip().split()[-1])
