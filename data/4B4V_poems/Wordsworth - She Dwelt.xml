@@ -17,11 +17,11 @@
             <lg type="quatrain" met="-+(4/3/4/3)" rhyme="abcb" org="uniform" sample="complete" part="N">
                 <l n="1" met="-+-+-+-+" real="-+-+--+-+">
                     <seg met="-+" real="-+">She dwelt <sb/></seg>
-                    <seg met="-+" real="-+">among </seg>
+                    <seg met="-+" real="-+">a mong </seg>
                     <seg met="-+" real="--+">the un<sb/>trod<sb/></seg>
                     <seg>den <rhyme label="a">ways,</rhyme></seg>
                 </l><l n="2" met="-+-+-+" real="-+-+-+">
-                    <seg>Beside </seg>
+                    <seg>Be side </seg>
                     <seg met="-+" real="-+">the springs </seg>
                     <seg>of <rhyme label="b">Dove,</rhyme></seg>
                 </l><l n="3" met="-+-+-+-+" real="-+-+-+-+">

@@ -68,7 +68,7 @@
                     <seg>bered and </seg>
                     <seg>e<sb/>nor<sb/></seg>
                     <seg>mous<sb/> pol<sb/></seg>
-                    <seg>y<sb/>pi<rhyme label="e">pi</rhyme></seg>
+                    <seg>y<sb/><rhyme label="e">pi</rhyme></seg>
                     </l><l n="10" met="-+-+-+-+-+" real="+--+-+-+--+">
                     <seg>Win<sb/>now </seg>
                     <seg>with gi<sb/></seg>
@@ -87,7 +87,7 @@
                     <seg>huge sea<sb/></seg>
                     <seg>worms in </seg>
                     <seg>his <rhyme label="a">sleep,</rhyme></seg>
-                    </l><l n="13" met="-+-+-+-+-+" real="-+-+-+-+-+">
+                    </l><l n="13" met="-+-+-+-+-+" real="-+-+-++-+-+">
                     <seg>Un<sb/>til </seg>
                     <seg>the lat<sb/></seg>
                     <seg>ter fi<sb/></seg>

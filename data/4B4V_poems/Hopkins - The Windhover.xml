@@ -36,7 +36,7 @@
                 </l><l n="4" met="-+-+-+-+-+" real="+---+---+--+-+">
                     <seg met="-+" real="+-">High there, </seg>
                     <seg met="-+" real="--+">how he rung </seg>
-                    <seg met="-+" real="---+">upon the rein </seg>
+                    <seg met="-+" real="---+">up on the rein </seg>
                     <seg met="-+" real="--+" >of a wim</seg>
                     <seg>pling <rhyme label="a">wing</rhyme></seg>
                 </l><l n="5" met="-+-+-+-+-+" real="--+---+++-+">
@@ -65,7 +65,7 @@
                     <caesura/>
                     <seg met="-+" real="--+">the a<sb/>chieve </seg>
                     <seg met="-+" real="--+">of, the mas</seg>
-                    <seg met="-+" real="----+">tery of the <rhyme label="a">thing!</rhyme></seg>
+                    <seg met="-+" real="----+">te ry of the <rhyme label="a">thing!</rhyme></seg>
                 </l><l n="9" met="-+-+-+-+-+" real="++--+--+-++++">
                     <seg met="-+" real="++">Brute beau</seg>
                     <seg met="-+" real="--+">ty and val</seg>
@@ -74,7 +74,7 @@
                     <seg met="-+" real="-++">oh, air, pride,</seg>
                     <seg>plume, <rhyme label="c">here</rhyme></seg>
                 </l><l n="10" met="-+-+-+-+-+" real="+-+-+-+-+--+-">
-                    <seg met="-+" real="+-">Buckle! </seg>
+                    <seg met="-+" real="+-">Buc kle! </seg>
                     <caesura/>
                     <seg met="-+" real="+-+">AND the fire </seg>
                     <seg met="-+" real="-+">that breaks </seg>
@@ -93,7 +93,7 @@
                     
                     <seg met="-+" real="++">sheer plod </seg>
                     <seg met="-+" real="-+">makes plough </seg>
-                    <seg met="-+" real="-+-">down <rhyme label="d">sillion</rhyme></seg>
+                    <seg met="-+" real="-+-">down <rhyme label="d">sil lion</rhyme></seg>
                 </l><l n="13" met="-+-+-+-+-+" real="+-+++-+-+">
                     <seg met="-+" real="+">Shine, </seg>
                     <caesura/>
@@ -106,5 +106,5 @@
                     <seg met="-+" real="--">them<sb/>selves </seg>
                     <seg met="-+" real="-+">and gash <sb/></seg>
                     <seg met="-+" real="+">gold-</seg>
-                    <seg met="-+" real="-+-">ver<sb/><rhyme label="d">mil>sb/>ion.</rhyme></seg>
+                    <seg met="-+" real="-+-">ver<sb/><rhyme label="d">mil<sb/>ion.</rhyme></seg>
                           </l></lg></body></text></TEI>

@@ -8,7 +8,7 @@
                     <seg met="-+" part="N">Shall I </seg>
                     <seg met="-+" part="N">com<sb part="N"/>pare </seg>
                     <seg met="-+" part="N">thee to </seg>
-                    <seg met="-+" part="N">a sum<seg part="N"/></seg>
+                    <seg met="-+" part="N">a sum<sb part="N"/></seg>
                     <seg met="-+" part="N">mer's <rhyme label="a">day?</rhyme></seg>
                 </l><l n="2" part="N" met="-+-+-+-+-+" real="--++--++-+">
                     <seg met="-+" real="--" part="N">Thou art </seg>

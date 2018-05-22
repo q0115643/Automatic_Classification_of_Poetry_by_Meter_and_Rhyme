@@ -88,7 +88,7 @@
                     <l n="9" met="-+-+-+-+" real="+++--++|+-+-+-+">
                         <seg met="-+" real="+">And </seg>
                         <seg met="-+" real="++|-+">what should<sb/></seg>
-                        <seg met="-+" real="--|-+">er, &amp; </seg>
+                        <seg met="-+" real="--|-+">er, and </seg>
                         <seg met="-+" real="++|-+">what <rhyme label="a">art,</rhyme></seg>
                     </l>
                     <l n="10" met="-+-+-+-+" real="-+-+-+-+">
@@ -107,7 +107,7 @@
                         <seg met="-+" real="+">What </seg>
                         <seg met="-+" real="++">dread hand? </seg>
                         <caesura/>
-                        <seg>&amp; what </seg>
+                        <seg>and what </seg>
                         <seg met="-+" real="++">dread <rhyme label="b">feet?</rhyme></seg>
                     </l>
                 </lg>
