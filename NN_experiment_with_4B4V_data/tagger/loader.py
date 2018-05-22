@@ -26,6 +26,7 @@ def load_sentences(path, lower, zeros):
     sentences = []
     sentence = []
     for line in codecs.open(path, 'r', 'utf-8'):
+        # line is separated piece by black line, not just \n
         line = zero_digits(line.rstrip()) if zeros else line.rstrip()
         if not line:
             if len(sentence) > 0:
@@ -35,6 +36,7 @@ def load_sentences(path, lower, zeros):
         else:
             word = line.split()
             assert len(word) >= 2
+            #print(word)
             sentence.append(word)
     if len(sentence) > 0:
         if 'DOCSTART' not in sentence[0][0]:
@@ -50,10 +52,11 @@ def update_tag_scheme(sentences, tag_scheme):
     for i, s in enumerate(sentences):
         tags = [w[-1] for w in s]
         # Check that tags are given in the IOB format
+        '''
         if not iob2(tags):
             s_str = '\n'.join(' '.join(w) for w in s)
             raise Exception('Sentences should be given in IOB format! ' +
-                            'Please check sentence %i:\n%s' % (i, s_str))
+                            'Please check sentence %i:\n%s\ntags: %s' % (i, s_str, tags))
         if tag_scheme == 'iob':
             # If format was IOB1, we convert to IOB2
             for word, new_tag in zip(s, tags):
@@ -64,13 +67,14 @@ def update_tag_scheme(sentences, tag_scheme):
                 word[-1] = new_tag
         else:
             raise Exception('Unknown tagging scheme!')
-
+        '''
 
 def word_mapping(sentences, lower):
     """
     Create a dictionary and a mapping of words, sorted by frequency.
     """
     words = [[x[0].lower() if lower else x[0] for x in s] for s in sentences]
+    #print(len(words))
     dico = create_dico(words)
 
     dico['<PAD>'] = 10000001
@@ -183,7 +187,7 @@ def augment_with_pretrained(dictionary, ext_emb_path, words):
     """
     print('Loading pretrained embeddings from %s...' % ext_emb_path)
     assert os.path.isfile(ext_emb_path)
-
+    print(words)
     # Load pretrained embeddings from file
     pretrained = set([
         line.rstrip().split()[0].strip()

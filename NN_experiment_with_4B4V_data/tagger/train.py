@@ -79,7 +79,7 @@ optparser.add_option(
     help="Location of pretrained embeddings"
 )
 optparser.add_option(
-    "-A", "--all_emb", default="1",
+    "-A", "--all_emb", default="0",
     type='int', help="Load all embeddings"
 )
 optparser.add_option(
@@ -169,13 +169,15 @@ tag_scheme = parameters['tag_scheme']
 train_sentences = loader.load_sentences(opts.train, lower, zeros)
 dev_sentences = loader.load_sentences(opts.dev, lower, zeros)
 test_sentences = loader.load_sentences(opts.test, lower, zeros)
-test_train_sentences = loader.load_sentences(opts.test_train, lower, zeros)
+#test_train_sentences = loader.load_sentences(opts.test_train, lower, zeros)
 
 update_tag_scheme(train_sentences, tag_scheme)
 update_tag_scheme(dev_sentences, tag_scheme)
 update_tag_scheme(test_sentences, tag_scheme)
-update_tag_scheme(test_train_sentences, tag_scheme)
+#update_tag_scheme(test_train_sentences, tag_scheme)
 
+# senteces: set of <sentence>s
+# sentence: set of <word>s
 dico_words_train = word_mapping(train_sentences, lower)[0]
 
 dico_words, word_to_id, id_to_word = augment_with_pretrained(

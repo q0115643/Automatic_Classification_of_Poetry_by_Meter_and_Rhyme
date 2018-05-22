@@ -30,7 +30,11 @@ with open('../4B4V.csv', newline='') as myFile:
             cnt += 1
         # vertical align
         for syllable, meter in zip(syllables_list, meters):
-            input_data.write(syllable + ' ' + meter + '\n')
+            if meter == '+':
+                meter = 's'
+            else:
+                meter = 'u'
+            input_data.write(syllable + ' ' + 'I-' + meter + '\n')
         input_data.write('\n')
 
 print("lines with not-matching number of meters and syllables: " + str(cnt))
