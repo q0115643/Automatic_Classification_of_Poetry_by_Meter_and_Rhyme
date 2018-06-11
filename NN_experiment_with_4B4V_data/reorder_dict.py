@@ -5,6 +5,7 @@ filename = "syllabification_dictionary.txt"
 f_csv = open('syl_dict.csv', 'w', encoding='utf-8', newline='')
 wr = csv.writer(f_csv)
 word_table = set()
+cnt = 0
 with open(filename) as f:
     for line in f:
         word_syl = line.split('\\')
@@ -21,4 +22,6 @@ with open(filename) as f:
             if box1 not in word_table:
                 word_table.add(box1)
                 wr.writerow([box1, box2])
+                cnt += 1
+print("number of words: " + str(cnt))
 f_csv.close()
