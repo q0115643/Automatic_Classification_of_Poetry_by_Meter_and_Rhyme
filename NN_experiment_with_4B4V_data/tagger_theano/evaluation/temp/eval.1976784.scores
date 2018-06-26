@@ -1,0 +1,4 @@
+found: 1074 tags; correct: 983.
+accuracy:  91.53%; precision:  91.53%; recall:  91.53%; FB1:  91.53
+                +: precision:  90.97%; recall:  92.48%; FB1:  91.72  554
+                -: precision:  92.12%; recall:  90.55%; FB1:  91.33  520
